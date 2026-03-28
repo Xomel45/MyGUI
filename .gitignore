@@ -1,41 +1,48 @@
-# Prerequisites
-*.d
+# ── Build directories ────────────────────────────────────────────────────────
+build/
+build-*/
+cmake-build-*/
+out/
 
-# Compiled Object files
-*.slo
-*.lo
+# ── CMake generated ──────────────────────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+install_manifest.txt
+
+# ── Compiled output ──────────────────────────────────────────────────────────
+*.d
 *.o
 *.obj
-
-# Precompiled Headers
+*.slo
+*.lo
 *.gch
 *.pch
-
-# Linker files
 *.ilk
-
-# Debugger Files
 *.pdb
-
-# Compiled Dynamic libraries
+*.dwo
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
 *.lib
-
-# Executables
 *.exe
 *.out
 *.app
+MyGUI
 
-# debug information files
-*.dwo
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.user
+*.suo
+.vs/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
