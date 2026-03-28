@@ -230,9 +230,8 @@ void App::renderProjectsPanel()
 
     if (ImGui::TreeNodeEx(title.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanFullWidth))
     {
-        if (!t.description.empty())
-            ImGui::TextDisabled("%s", t.description.c_str());
-        ImGui::TextDisabled("Language: %s", t.language.c_str());
+        if (!t.author.empty())      ImGui::TextDisabled("by %s", t.author.c_str());
+        if (!t.description.empty()) ImGui::TextDisabled("%s", t.description.c_str());
         ImGui::Spacing();
 
         // ── Main screen ──────────────────────────────────────────────────
@@ -243,8 +242,20 @@ void App::renderProjectsPanel()
             if (ImGui::TreeNode(btnLabel.c_str()))
             {
                 for (auto& [k, v] : t.main.buttons)
-                    ImGui::Text("%-16s  \"%s\"", k.c_str(), v.c_str());
+                    ImGui::Text("%-20s  \"%s\"", k.c_str(), v.c_str());
                 ImGui::TreePop();
+            }
+            // Layout
+            if (!t.main.layout.sidebar_position.empty() || !t.main.layout.play_button_align.empty())
+            {
+                if (ImGui::TreeNode("Layout"))
+                {
+                    if (!t.main.layout.sidebar_position.empty())
+                        ImGui::Text("sidebar_position:  %s", t.main.layout.sidebar_position.c_str());
+                    if (!t.main.layout.play_button_align.empty())
+                        ImGui::Text("play_button_align: %s", t.main.layout.play_button_align.c_str());
+                    ImGui::TreePop();
+                }
             }
             // Backgrounds
             if (ImGui::TreeNode("Backgrounds##main"))
@@ -260,9 +271,8 @@ void App::renderProjectsPanel()
                 {
                     if (ImGui::Selectable(v.c_str()))
                     {
-                        auto absPath  = t.rootDir / v;
-                        std::string lbl = std::filesystem::path(v).filename().string();
-                        m_pendingFocus = findOrOpenTab(absPath, lbl);
+                        auto absPath = t.rootDir / v;
+                        m_pendingFocus = findOrOpenTab(absPath, std::filesystem::path(v).filename().string());
                     }
                 }
                 ImGui::TreePop();
@@ -292,9 +302,8 @@ void App::renderProjectsPanel()
                 {
                     if (ImGui::Selectable(v.c_str()))
                     {
-                        auto absPath  = t.rootDir / v;
-                        std::string lbl = std::filesystem::path(v).filename().string();
-                        m_pendingFocus = findOrOpenTab(absPath, lbl);
+                        auto absPath = t.rootDir / v;
+                        m_pendingFocus = findOrOpenTab(absPath, std::filesystem::path(v).filename().string());
                     }
                 }
                 ImGui::TreePop();
@@ -399,6 +408,91 @@ void App::renderPreviewPanel()
     ImGui::End();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  CSS variable parser  (parses :root { --name: #rrggbb; } blocks)
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct CssVars {
+    std::map<std::string, ImVec4> colors;
+
+    ImVec4 get(const char* name, ImVec4 fallback) const
+    {
+        auto it = colors.find(name);
+        return it != colors.end() ? it->second : fallback;
+    }
+};
+
+static ImVec4 parseHex(std::string_view hex)
+{
+    if (hex.size() < 7 || hex[0] != '#') return ImVec4(1,1,1,1);
+    auto h = [&](size_t off) {
+        return std::stoi(std::string(hex.substr(off, 2)), nullptr, 16) / 255.f;
+    };
+    return ImVec4(h(1), h(3), h(5), 1.f);
+}
+
+static CssVars parseCssVars(const char* css)
+{
+    CssVars out;
+    std::string_view sv(css);
+
+    auto root = sv.find(":root");
+    if (root == sv.npos) return out;
+    auto ob = sv.find('{', root);
+    if (ob == sv.npos) return out;
+    auto cb = sv.find('}', ob);
+    if (cb == sv.npos) return out;
+
+    std::string_view block = sv.substr(ob + 1, cb - ob - 1);
+
+    auto trim = [](std::string_view s) -> std::string_view {
+        auto a = s.find_first_not_of(" \t\r\n");
+        if (a == s.npos) return {};
+        auto b = s.find_last_not_of(" \t\r\n;");
+        return s.substr(a, b - a + 1);
+    };
+
+    size_t pos = 0;
+    while (pos < block.size())
+    {
+        auto nl  = block.find('\n', pos);
+        auto end = (nl == block.npos) ? block.size() : nl;
+        auto line = trim(block.substr(pos, end - pos));
+        pos = end + 1;
+
+        if (!line.starts_with("--")) continue;
+        auto colon = line.find(':');
+        if (colon == line.npos) continue;
+
+        auto name  = std::string(trim(line.substr(0, colon)));
+        auto value = std::string(trim(line.substr(colon + 1)));
+
+        if (value.size() >= 7 && value[0] == '#')
+        {
+            try { out.colors[name] = parseHex(value); }
+            catch (...) {}
+        }
+    }
+    return out;
+}
+
+// Find the editor buffer for a CSS file referenced by its relative path key
+static const char* findCssBuf(
+    const std::vector<EditorTab>& tabs,
+    const std::filesystem::path& rootDir,
+    const std::map<std::string, std::string>& cssMap,
+    const char* key)
+{
+    auto it = cssMap.count(key) ? cssMap.find(key) : cssMap.begin();
+    if (it == cssMap.end()) return nullptr;
+    auto absPath = rootDir / it->second;
+    for (auto& tab : tabs)
+        if (tab.filePath == absPath) return tab.buf;
+    return nullptr;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Draw background image (or a solid placeholder) + transparent overlay child window.
 // Returns the overlay child window size so callers can place widgets inside.
 static ImVec2 beginPreviewOverlay(unsigned texId, const char* childId)
@@ -430,7 +524,17 @@ void App::renderPreviewMain()
 {
     auto& t = *m_theme;
 
-    // Resolve background texture
+    // CSS variables (live — re-parsed every frame from the editor buffer)
+    CssVars cv;
+    if (!t.rootDir.empty())
+        if (const char* buf = findCssBuf(m_tabs, t.rootDir, t.main.css, "main"))
+            cv = parseCssVars(buf);
+
+    ImVec4 colSurface = cv.get("--surface", ImVec4(0.12f, 0.12f, 0.18f, 1.f));
+    ImVec4 colHover   = cv.get("--line",    ImVec4(0.20f, 0.20f, 0.28f, 1.f));
+    ImVec4 colText    = cv.get("--text",    ImVec4(0.85f, 0.85f, 0.90f, 1.f));
+
+    // Background texture
     unsigned texId = 0;
     if (!t.rootDir.empty() && !t.main.backgrounds.empty())
     {
@@ -442,17 +546,17 @@ void App::renderPreviewMain()
 
     ImVec2 size = beginPreviewOverlay(texId, "##mainOverlay");
 
-    // Semi-transparent button style
-    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.10f, 0.10f, 0.10f, 0.75f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.25f, 0.85f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.40f, 0.40f, 0.40f, 0.90f));
+    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(colSurface.x, colSurface.y, colSurface.z, 0.82f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(colHover.x,   colHover.y,   colHover.z,   0.90f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(colHover.x,   colHover.y,   colHover.z,   1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Text,          colText);
 
     const float btnW   = size.x * 0.45f;
     const float btnH   = 26.f;
     const float gap    = 5.f;
     const int   count  = (int)t.main.buttons.size();
     const float totalH = count * (btnH + gap) - gap;
-    float       y      = (size.y - totalH) * 0.38f;  // slightly above center
+    float       y      = (size.y - totalH) * 0.38f;
     const float x      = (size.x - btnW) * 0.5f;
 
     for (auto& [key, label] : t.main.buttons)
@@ -462,9 +566,9 @@ void App::renderPreviewMain()
         y += btnH + gap;
     }
 
-    ImGui::PopStyleColor(3);
+    ImGui::PopStyleColor(4);
 
-    // Theme name watermark (bottom-left)
+    // Watermark
     ImGui::SetCursorPos(ImVec2(6.f, size.y - ImGui::GetTextLineHeight() - 4.f));
     ImGui::TextDisabled("%s  v%s", t.name.c_str(), t.version.c_str());
 
@@ -474,6 +578,18 @@ void App::renderPreviewMain()
 void App::renderPreviewSplash()
 {
     auto& t = *m_theme;
+
+    // CSS variables from splash.css
+    CssVars cv;
+    if (!t.rootDir.empty())
+        if (const char* buf = findCssBuf(m_tabs, t.rootDir, t.splash.css, "splash"))
+            cv = parseCssVars(buf);
+    // Splash CSS rarely has :root vars — fall back to main.css vars if empty
+    if (cv.colors.empty() && !t.rootDir.empty())
+        if (const char* buf = findCssBuf(m_tabs, t.rootDir, t.main.css, "main"))
+            cv = parseCssVars(buf);
+
+    ImVec4 colText = cv.get("--text", ImVec4(0.85f, 0.85f, 0.90f, 1.f));
 
     unsigned texId = 0;
     if (!t.rootDir.empty() && !t.splash.backgrounds.empty())
@@ -488,13 +604,14 @@ void App::renderPreviewSplash()
 
     if (!t.splash.texts.empty())
     {
-        // Cycle through texts every 2 seconds
         int idx = static_cast<int>(ImGui::GetTime() * 0.5) % (int)t.splash.texts.size();
         const auto& txt = t.splash.texts[idx];
 
+        ImGui::PushStyleColor(ImGuiCol_Text, colText);
         ImVec2 ts = ImGui::CalcTextSize(txt.c_str());
         ImGui::SetCursorPos(ImVec2((size.x - ts.x) * 0.5f, (size.y - ts.y) * 0.5f));
         ImGui::TextUnformatted(txt.c_str());
+        ImGui::PopStyleColor();
     }
 
     ImGui::EndChild();
