@@ -249,16 +249,27 @@ DESK_EOF
     fi
 
     # Распаковываем AppImage в BUILD_LINUX, затем копируем артефакт
+    # Иконка — берём из assets/icons/ если есть
+    local icon_arg=""
+    for ext in png svg; do
+        if [[ -f "$SCRIPT_DIR/assets/icons/${APP_NAME}.${ext}" ]]; then
+            icon_arg="--icon-file=$SCRIPT_DIR/assets/icons/${APP_NAME}.${ext}"
+            break
+        fi
+    done
+
     log "Запуск linuxdeploy..."
     (
         cd "$BUILD_LINUX"
         OUTPUT="${appimage_name}" \
         DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1 \
         LINUXDEPLOY_PLUGIN_STRIP=0 \
+        NO_STRIP=1 \
         linuxdeploy \
             --appdir AppDir \
             --executable "$APP_NAME" \
             --desktop-file "$SCRIPT_DIR/${APP_NAME}.desktop" \
+            ${icon_arg} \
             --output appimage
     )
 
