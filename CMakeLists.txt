@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(MyGUI VERSION 0.1.0)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
 
 # ── GLFW ────────────────────────────────────────────────────────────────────
 FetchContent_Declare(glfw
@@ -66,7 +67,6 @@ add_executable(MyGUI
     main.cpp
     src/App.cpp
     src/Theme.cpp
-    src/stb_impl.cpp
     ${IMGUI_SOURCES}
 )
 
@@ -87,3 +87,11 @@ target_link_libraries(MyGUI PRIVATE
 if(WIN32)
     target_link_libraries(MyGUI PRIVATE gdi32 imm32)
 endif()
+
+# Копируем assets (шрифты) рядом с исполняемым файлом
+add_custom_command(TARGET MyGUI POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:MyGUI>/assets
+    COMMENT "Copying assets to build directory"
+)

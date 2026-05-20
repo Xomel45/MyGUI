@@ -1,28 +1,9 @@
 #pragma once
 #include "Theme.h"
-#include <filesystem>
-#include <map>
 #include <optional>
 #include <string>
-#include <vector>
 
 struct GLFWwindow;
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-struct EditorTab {
-    std::string           label;
-    std::filesystem::path filePath;   // empty = not yet saved
-    bool                  dirty = false;
-
-    static constexpr size_t kBufSize = 1024 * 64;  // 64 KB
-    char buf[kBufSize] = {};
-
-    void        setContent(const std::string& s);
-    std::string getContent() const { return buf; }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 class App
 {
@@ -34,40 +15,34 @@ public:
 private:
     // ── Rendering ─────────────────────────────────────────────────────────
     void render();
-    void setupDockLayout(unsigned int dsid);
+    void setupDockLayout(unsigned dsid);
     void renderMenuBar();
-    void renderProjectsPanel();
-    void renderEditorPanel();
-    void renderPreviewPanel();
+    void renderMetaPanel();     // метаданные + действия
+    void renderPalettePanel();  // 23 цвета + CSS вкладка
+    void renderPreviewPanel();  // live-превью интерфейса Naleystogramm
 
-    // ── File operations ───────────────────────────────────────────────────
+    // ── Actions ───────────────────────────────────────────────────────────
     void actionNew();
     void actionOpen();
     void actionSave();
     void actionSaveAs();
+    void actionExport();   // экспорт в .zip для импорта в Naleystogramm
 
-    // ── Theme / tab management ────────────────────────────────────────────
-    void loadTheme(const std::filesystem::path& path);
-    void applyThemeToEditor();
-    int  findOrOpenTab(const std::filesystem::path& path, const std::string& label);
-
-    // ── Preview helpers ───────────────────────────────────────────────────
-    void     renderPreviewMain();
-    void     renderPreviewSplash();
-    unsigned getTexture(const std::filesystem::path& path);
-    void     clearTextures();
+    // ── Helpers ───────────────────────────────────────────────────────────
+    void syncBuffersFromTheme();  // обновить m_nameBuf / m_authorBuf / m_cssBuf
 
     // ── State ─────────────────────────────────────────────────────────────
-    GLFWwindow*            m_window          = nullptr;
-    bool                   m_dockLayoutReady = false;
+    GLFWwindow*          m_window          = nullptr;
+    bool                 m_dockLayoutReady = false;
 
-    std::optional<Theme>   m_theme;
-    std::vector<EditorTab> m_tabs;
-    int                    m_activeTab       = 0;
-    int                    m_pendingFocus    = -1;
+    std::optional<Theme> m_theme;
+    bool                 m_dirty           = false;
+    std::string          m_statusMsg;
 
-    // GLuint == unsigned — no GL header needed in .h
-    std::map<std::filesystem::path, unsigned> m_textures;
+    // Буферы редактирования
+    char m_nameBuf[128]   = {};
+    char m_authorBuf[128] = {};
 
-    std::string            m_statusMsg;
+    static constexpr std::size_t kCssBufSize = 64 * 1024;
+    char m_cssBuf[kCssBufSize] = {};
 };
